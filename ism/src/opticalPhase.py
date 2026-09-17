@@ -92,7 +92,7 @@ class opticalPhase(initIsm):
         :param Tr: Optical transmittance [-]
         :return: TOA image in irradiances [mW/m2]
         """
-        toa = Tr * toa  * (np.pi/4) * np.square(D/f)
+        toa = Tr * toa  * (np.pi/4) * (D/f)**2
         return toa
 
 
