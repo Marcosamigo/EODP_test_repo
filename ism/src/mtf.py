@@ -69,7 +69,7 @@ class mtf:
 
         # Calculate the System MTF
         self.logger.debug("Calculation of the Sysmtem MTF by multiplying the different contributors")
-        Hsys = 1 # dummy
+        Hsys = Hdiff * Hdefoc * Hwfe * Hdet * Hsmear * Hmotion
 
         # Plot cuts ACT/ALT of the MTF
         self.plotMtf(Hdiff, Hdefoc, Hwfe, Hdet, Hsmear, Hmotion, Hsys, nlines, ncolumns, fnAct, fnAlt, directory, band)
@@ -192,7 +192,13 @@ class mtf:
         :param ksmear: Amplitude of low-frequency component for the motion smear MTF in ALT [pixels]
         :return: Smearing MTF
         """
-        #TODO
+
+        fnAlt = np.asarray(fnAlt, dtype=float)
+
+        Hsmear = np.sinc(ksmear * fnAlt)
+
+        Hsmear = np.tile(Hsmear[:, np.newaxis], (1, ncolumns))
+
         return Hsmear
 
     def mtfMotion(self, fn2D, kmotion):
@@ -202,7 +208,11 @@ class mtf:
         :param kmotion: Amplitude of high-frequency component for the motion smear MTF in ALT and ACT
         :return: detector MTF
         """
-        #TODO
+
+        fn2D = np.asarray(fn2D, dtype=float)
+
+        Hmotion = np.sinc(kmotion * fn2D)
+
         return Hmotion
 
     def plotMtf(self,Hdiff, Hdefoc, Hwfe, Hdet, Hsmear, Hmotion, Hsys, nlines, ncolumns, fnAct, fnAlt, directory, band):
@@ -223,6 +233,95 @@ class mtf:
         :param band: band
         :return: N/A
         """
-        #TODO
 
+        os.makedirs(directory, exist_ok=True)
 
+        centerAlt = np.argmin(np.abs(fnAlt))
+        centerAct = np.argmin(np.abs(fnAct))
+
+        positiveAct = fnAct >= 0
+        positiveAlt = fnAlt >= 0
+
+        plt.figure(figsize=(12, 6))
+
+        plt.plot(fnAct[positiveAct], Hdiff[centerAlt, positiveAct],
+                 label="Diffraction MTF")
+        plt.plot(fnAct[positiveAct], Hdefoc[centerAlt, positiveAct],
+                 label="Defocus MTF")
+        plt.plot(fnAct[positiveAct], Hwfe[centerAlt, positiveAct],
+                 label="WFE Aberrations MTF")
+        plt.plot(fnAct[positiveAct], Hdet[centerAlt, positiveAct],
+                 label="Detector MTF")
+        plt.plot(fnAct[positiveAct], Hsmear[centerAlt, positiveAct],
+                 label="Smearing MTF")
+        plt.plot(fnAct[positiveAct], Hmotion[centerAlt, positiveAct],
+                 label="Motion blur MTF")
+        plt.plot(fnAct[positiveAct], Hsys[centerAlt, positiveAct],
+                 color="black", linewidth=2, label="System MTF")
+
+        plt.axvline(0.5, color="black", linestyle="--",
+                    linewidth=2, label="f Nyquist")
+
+        plt.title("System MTF - slice ACT")
+        plt.xlabel("Spatial frequencies f/(1/w) [-]")
+        plt.ylabel("MTF")
+        plt.xlim(-0.02, 0.525)
+        plt.ylim(-0.05, 1.05)
+        plt.grid(True, alpha=0.5)
+        plt.legend(loc="lower left")
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(directory, f"mtf_{band}_ACT.png"), dpi=150)
+        plt.close()
+
+        plt.figure(figsize=(12, 6))
+
+        plt.plot(fnAlt[positiveAlt], Hdiff[positiveAlt, centerAct],
+                 label="Diffraction MTF")
+        plt.plot(fnAlt[positiveAlt], Hdefoc[positiveAlt, centerAct],
+                 label="Defocus MTF")
+        plt.plot(fnAlt[positiveAlt], Hwfe[positiveAlt, centerAct],
+                 label="WFE Aberrations MTF")
+        plt.plot(fnAlt[positiveAlt], Hdet[positiveAlt, centerAct],
+                 label="Detector MTF")
+        plt.plot(fnAlt[positiveAlt], Hsmear[positiveAlt, centerAct],
+                 label="Smearing MTF")
+        plt.plot(fnAlt[positiveAlt], Hmotion[positiveAlt, centerAct],
+                 label="Motion blur MTF")
+        plt.plot(fnAlt[positiveAlt], Hsys[positiveAlt, centerAct],
+                 color="black", linewidth=2, label="System MTF")
+
+        plt.axvline(0.5, color="black", linestyle="--",
+                    linewidth=2, label="f Nyquist")
+
+        plt.title("System MTF - slice ALT")
+        plt.xlabel("Spatial frequencies f/(1/w) [-]")
+        plt.ylabel("MTF")
+        plt.xlim(-0.02, 0.525)
+        plt.ylim(-0.05, 1.05)
+        plt.grid(True, alpha=0.5)
+        plt.legend(loc="lower left")
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(directory, f"mtf_{band}_ALT.png"), dpi=150)
+        plt.close()
+
+        plt.figure(figsize=(10, 6))
+
+        plt.imshow(
+            Hsys,
+            origin="lower",
+            aspect="auto",
+            cmap="jet",
+            vmin=np.min(Hsys),
+            vmax=1
+        )
+
+        plt.xlabel("ACT")
+        plt.ylabel("ALT")
+        plt.title(f"System MTF for {band}")
+        plt.colorbar()
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(directory, f"mtf_{band}_2D.png"), dpi=150)
+        plt.close()
