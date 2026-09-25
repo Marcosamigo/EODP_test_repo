@@ -140,10 +140,13 @@ class mtf:
         :param D: Telescope diameter [m]
         :return: Defocus MTF
         """
-        #TODO
+        fr2D = np.asarray(fr2D, dtype=float)
 
-        #HACER en casa
+        x = np.pi * defocus * fr2D * (1.0 - fr2D)
 
+        Hdefoc = np.ones_like(x)
+        mask = np.abs(x) > 1e-12
+        Hdefoc[mask] = 2.0 * j1(x[mask]) / x[mask]
 
         return Hdefoc
 
