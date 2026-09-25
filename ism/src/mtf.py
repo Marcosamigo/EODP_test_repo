@@ -120,6 +120,14 @@ class mtf:
         :return: diffraction MTF
         """
         #TODO
+        fr_clip = np.clip(fr2D, 0.0, 1.0)
+        Hdiff = (2.0 / np.pi) * (
+                np.arccos(fr_clip)
+                - fr_clip * np.sqrt(1.0 - fr_clip ** 2)
+        )
+
+        Hdiff = np.where(fr2D <= 1.0, Hdiff, 0.0)
+
         return Hdiff
 
 
@@ -133,6 +141,10 @@ class mtf:
         :return: Defocus MTF
         """
         #TODO
+
+        #HACER en casa
+
+
         return Hdefoc
 
     def mtfWfeAberrations(self, fr2D, lambd, kLF, wLF, kHF, wHF):
