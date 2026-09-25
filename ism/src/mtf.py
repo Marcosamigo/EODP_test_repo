@@ -161,7 +161,15 @@ class mtf:
         :param wHF: RMS of high-frequency wavefront errors [m]
         :return: WFE Aberrations MTF
         """
-        #TODO
+        fr2D = np.asarray(fr2D, dtype=float)
+
+        Hwfe = np.exp(
+            -fr2D * (1.0 - fr2D) * (
+                    kLF * (wLF / lambd) ** 2
+                    + kHF * (wHF / lambd) ** 2
+            )
+        )
+
         return Hwfe
 
     def mtfDetector(self,fn2D):
@@ -170,7 +178,10 @@ class mtf:
         :param fnD: 2D normalised frequencies (f/(1/w))), where w is the pixel width
         :return: detector MTF
         """
-        #TODO
+        fn2D = np.asarray(fn2D, dtype=float)
+
+        Hdet = np.abs(np.sinc(fn2D))
+
         return Hdet
 
     def mtfSmearing(self, fnAlt, ncolumns, ksmear):
