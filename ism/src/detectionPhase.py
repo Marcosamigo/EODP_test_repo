@@ -104,7 +104,16 @@ class detectionPhase(initIsm):
         :param wv: Central wavelength of the band [m]
         :return: Toa in photons
         """
-        #TODO
+
+        h = self.constants.h_planck
+        c = self.constants.speed_light
+        # h = 6.62606896e-34
+        # c = 2.99792458e8
+
+        Ein = toa * 1e-3 * area_pix * tint
+        Ephoton = h * c / wv
+        toa_ph = Ein / Ephoton
+
         return toa_ph
 
     def phot2Electr(self, toa, QE):
@@ -114,7 +123,10 @@ class detectionPhase(initIsm):
         :param QE: Quantum efficiency [e-/ph]
         :return: toa in electrons
         """
-        #TODO
+
+        toae = toa * QE
+        toae[toae > self.ismConfig.FWC] = self.ismConfig.FWC
+
         return toae
 
     def badDeadPixels(self, toa,bad_pix,dead_pix,bad_pix_red,dead_pix_red):
@@ -137,7 +149,10 @@ class detectionPhase(initIsm):
         :param kprnu: multiplicative factor to the standard normal deviation for the PRNU
         :return: TOA after adding PRNU [e-]
         """
-        #TODO
+
+        prnu = np.random.standard_normal(toa.shape[1]) * kprnu
+        toa =  toa * (1 + prnu)
+
         return toa
 
 
@@ -152,5 +167,15 @@ class detectionPhase(initIsm):
         :param ds_B_coeff: Empirical parameter of the model 6040 K
         :return: TOA in [e-] with dark signal
         """
-        #TODO
+
+        dsnu = np.abs(np.random.standard_normal(toa.shape[1]) * kdsnu)
+
+        Sd = ds_A_coeff * (T / Tref) ** 3 * np.exp(
+            -ds_B_coeff * (1 / T - 1 / Tref)
+        )
+
+        DS = Sd * (1 + dsnu)
+
+        toa = toa + DS
+
         return toa
