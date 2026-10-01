@@ -109,7 +109,7 @@ class detectionPhase(initIsm):
         c = self.constants.speed_light
         # h = 6.62606896e-34
         # c = 2.99792458e8
-
+        tao = toa/1000
         Ein = toa * 1e-3 * area_pix * tint
         Ephoton = h * c / wv
         toa_ph = Ein / Ephoton
@@ -139,7 +139,8 @@ class detectionPhase(initIsm):
         :param dead_pix_red: Reduction in the quantum efficiency for the dead pixels [-, over 1]
         :return: toa in e- including bad & dead pixels
         """
-        #TODO
+
+        toa[:,5] = toa[:,5]*(1-bad_pix_red)
         return toa
 
     def prnu(self, toa, kprnu):
@@ -170,9 +171,7 @@ class detectionPhase(initIsm):
 
         dsnu = np.abs(np.random.standard_normal(toa.shape[1]) * kdsnu)
 
-        Sd = ds_A_coeff * (T / Tref) ** 3 * np.exp(
-            -ds_B_coeff * (1 / T - 1 / Tref)
-        )
+        Sd = ds_A_coeff * (T / Tref) ** 3 * np.exp(-ds_B_coeff * (1 / T - 1 / Tref))
 
         DS = Sd * (1 + dsnu)
 
