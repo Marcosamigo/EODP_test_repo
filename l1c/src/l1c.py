@@ -10,6 +10,7 @@ from scipy.interpolate import bisplrep, bisplev
 import matplotlib.pyplot as plt
 from common.io.l1cProduct import writeL1c
 from matplotlib import cm
+from haversine import haversine, Unit
 
 class l1c(initL1c):
 
@@ -62,7 +63,29 @@ class l1c(initL1c):
         :param band: band
         :return: L1C radiances, L1C latitude and longitude in degrees
         '''
-        #TODO
+
+        tck = bisplrep(lat.ravel(), lon.ravel(), toa.ravel())
+
+        m = mgrs.MGRS()
+        mgrs_tiles = set([])
+
+        for ii in range(lat.shape[0]): #100
+            for jj in range(lat.shape[1]): #150
+                tile = m.toMGRS(float(lat[ii, jj]),float(lon[ii, jj]),
+                    MGRSPrecision=self.l1cConfig.mgrs_tile_precision
+                )
+                mgrs_tiles.add(str(tile))
+
+        mgrs_tiles = list(mgrs_tiles)
+
+        lat_l1c = np.zeros(len(mgrs_tiles))
+        lon_l1c = np.zeros(len(mgrs_tiles))
+        toa_l1c = np.zeros(len(mgrs_tiles))
+
+        for ii, tile in enumerate(mgrs_tiles):
+            lat_l1c[ii], lon_l1c[ii] = m.toLatLon(tile)
+            toa_l1c[ii] = bisplev(lat_l1c[ii], lon_l1c[ii], tck)
+
         return lat_l1c, lon_l1c, toa_l1c
 
     def checkSize(self, lat,toa):
