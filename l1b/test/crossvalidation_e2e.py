@@ -74,11 +74,11 @@ def compare_dimensions(reference_ds: xr.Dataset, test_ds: xr.Dataset) -> bool:
 
     if only_reference:
         dimensions_ok = False
-        print(f"  Dimensiones solo en referencia: {only_reference}")
+        print(f"  Dimensions only in reference: {only_reference}")
 
     if only_test:
         dimensions_ok = False
-        print(f"  Dimensiones solo en test: {only_test}")
+        print(f"  Dimensions only in test: {only_test}")
 
     for dim in common_dims:
         ref_size = reference_dims[dim]
@@ -87,7 +87,7 @@ def compare_dimensions(reference_ds: xr.Dataset, test_ds: xr.Dataset) -> bool:
             print(f"  Dimension {dim}: OK ({ref_size})")
         else:
             dimensions_ok = False
-            print(f"  Dimension {dim}: DIFFERENT referencia={ref_size}, test={test_size}")
+            print(f"  Dimension {dim}: DIFFERENT reference={ref_size}, test={test_size}")
 
     return dimensions_ok
 
@@ -102,16 +102,16 @@ def compare_variable(variable_name: str, reference_var: xr.DataArray, test_var: 
     print(f"  Variable {variable_name}:")
 
     if reference_var.shape != test_var.shape:
-        print(f"    Shape: SHAPE DIFF referencia={reference_var.shape}, test={test_var.shape}")
+        print(f"    Shape: SHAPE DIFF reference={reference_var.shape}, test={test_var.shape}")
         return False
 
     print(f"    Shape: OK {reference_var.shape}")
 
     if reference_var.dtype == test_var.dtype:
-        print(f"    Tipo: OK {reference_var.dtype}")
+        print(f"    Data type: OK {reference_var.dtype}")
     else:
         variable_ok = False
-        print(f"    Tipo: DIFFERENT referencia={reference_var.dtype}, test={test_var.dtype}")
+        print(f"    Data type: DIFFERENT reference={reference_var.dtype}, test={test_var.dtype}")
 
     if is_numeric_array(ref_values) and is_numeric_array(test_values):
         max_abs_diff = float(np.nanmax(np.abs(ref_values - test_values))) if ref_values.size else 0.0
@@ -126,15 +126,15 @@ def compare_variable(variable_name: str, reference_var: xr.DataArray, test_var: 
             equal_nan=True,
         )
 
-        print(f"    Diferencia maxima absoluta: {max_abs_diff:.12e}")
+        print(f"    Maximum absolute difference: {max_abs_diff:.12e}")
         print(f"    RMSE: {variable_rmse:.12e}")
-        print(f"    Diferencia relativa maxima: {max_rel_diff:.12e}")
-        print(f"    Valores: {'OK' if values_ok else 'DIFFERENT'}")
+        print(f"    Maximum relative difference: {max_rel_diff:.12e}")
+        print(f"    Values: {'OK' if values_ok else 'DIFFERENT'}")
 
         variable_ok = variable_ok and values_ok
     else:
         values_ok = arrays_equal_non_numeric(ref_values, test_values)
-        print(f"    Valores no numericos: {'OK' if values_ok else 'DIFFERENT'}")
+        print(f"    Non-numeric values: {'OK' if values_ok else 'DIFFERENT'}")
         variable_ok = variable_ok and values_ok
 
     return variable_ok
@@ -143,12 +143,12 @@ def compare_variable(variable_name: str, reference_var: xr.DataArray, test_var: 
 def compare_file(reference_file: Path, test_file: Path) -> str:
     """Compara dos archivos NetCDF y devuelve OK o DIFFERENT."""
     print("=" * 80)
-    print(f"ARCHIVO: {reference_file.name}")
+    print(f"FILE: {reference_file.name}")
 
     file_ok = True
 
     with xr.open_dataset(reference_file) as reference_ds, xr.open_dataset(test_file) as test_ds:
-        print("Dimensiones:")
+        print("Dimensions:")
         file_ok = compare_dimensions(reference_ds, test_ds) and file_ok
 
         reference_variables = set(reference_ds.variables)
@@ -160,13 +160,13 @@ def compare_file(reference_file: Path, test_file: Path) -> str:
 
         if only_reference:
             file_ok = False
-            print(f"Variables solo en referencia: {only_reference}")
+            print(f"Variables only in reference: {only_reference}")
 
         if only_test:
             file_ok = False
-            print(f"Variables solo en test: {only_test}")
+            print(f"Variables only in test: {only_test}")
 
-        print("Variables comunes:")
+        print("Common variables:")
         for variable_name in common_variables:
             variable_ok = compare_variable(
                 variable_name,
@@ -176,16 +176,16 @@ def compare_file(reference_file: Path, test_file: Path) -> str:
             file_ok = variable_ok and file_ok
 
     status = "OK" if file_ok else "DIFFERENT"
-    print(f"RESULTADO DEL ARCHIVO: {'OK' if file_ok else 'HAY DIFERENCIAS'}")
+    print(f"FILE RESULT: {'PASSED' if file_ok else 'FAILED'}")
     return status
 
 
 def run_crossvalidation() -> None:
     """Ejecuta la cross-validation entre los NetCDF de ambas carpetas."""
-    print("CROSS-VALIDATION DE ARCHIVOS NETCDF")
-    print(f"Carpeta de referencia: {REFERENCE_DIR}")
-    print(f"Carpeta de test: {TEST_DIR}")
-    print(f"Tolerancias: ABS_TOL={ABS_TOL}, REL_TOL={REL_TOL}")
+    print("E2E L1B NETCDF CROSS-VALIDATION")
+    print(f"Reference directory: {REFERENCE_DIR}")
+    print(f"Test directory: {TEST_DIR}")
+    print(f"Tolerances: ABS_TOL={ABS_TOL}, REL_TOL={REL_TOL}")
     print()
 
     reference_files = sorted(REFERENCE_DIR.glob("*.nc"))
@@ -201,9 +201,9 @@ def run_crossvalidation() -> None:
 
         if test_file is None:
             print("=" * 80)
-            print(f"ARCHIVO: {reference_file.name}")
+            print(f"FILE: {reference_file.name}")
             print("MISSING")
-            print("RESULTADO DEL ARCHIVO: HAY DIFERENCIAS")
+            print("FILE RESULT: MISSING")
             results[reference_file.name] = "MISSING"
             continue
 
@@ -216,24 +216,25 @@ def run_crossvalidation() -> None:
     missing_count = sum(1 for status in results.values() if status == "MISSING")
 
     print("=" * 80)
-    print("RESUMEN GLOBAL")
+    print("GLOBAL SUMMARY")
     print()
-    print("Estado por archivo:")
+    print("Status by band / NetCDF file:")
     for file_name in sorted(results):
-        print(f"  {file_name}: {results[file_name]}")
+        display_status = {"OK": "PASSED", "DIFFERENT": "FAILED", "MISSING": "MISSING"}
+        print(f"  {file_name}: {display_status[results[file_name]]}")
 
     print()
-    print(f"Numero total de archivos de referencia: {len(reference_files)}")
-    print(f"Numero de archivos OK: {ok_count}")
-    print(f"Numero de archivos diferentes: {different_count}")
-    print(f"Numero de archivos ausentes: {missing_count}")
+    print(f"Total files compared: {len(reference_files)}")
+    print(f"PASSED: {ok_count}")
+    print(f"FAILED: {different_count}")
+    print(f"MISSING: {missing_count}")
 
-    print("Archivos extra presentes en output_test_mio:")
+    print("Extra files present in my_output_l1b:")
     if extra_files:
         for file_name in extra_files:
             print(f"  {file_name}")
     else:
-        print("  Ninguno")
+        print("  None")
 
     all_ok = (
         len(reference_files) > 0
@@ -245,9 +246,9 @@ def run_crossvalidation() -> None:
 
     print()
     if all_ok:
-        print("RESULTADO GLOBAL: CROSS-VALIDATION CORRECTA")
+        print("GLOBAL RESULT: PASSED")
     else:
-        print("RESULTADO GLOBAL: EXISTEN DIFERENCIAS")
+        print("GLOBAL RESULT: FAILED")
 
 
 if __name__ == "__main__":
