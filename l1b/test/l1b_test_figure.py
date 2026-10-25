@@ -1,3 +1,4 @@
+"""Plot original L1B equalization profiles for all four VNIR bands."""
 from pathlib import Path
 
 import numpy as np
@@ -5,324 +6,121 @@ import xarray as xr
 import matplotlib.pyplot as plt
 
 
-# ================================================================
-# RUTAS
-# ================================================================
-
 BASE_DIR = Path(
     r"C:\Users\marco\OneDrive\Escritorio\UC3M\Master\3er Cuatri"
     r"\EODP\EODP_TER_2021\EODP-TS-L1B"
 )
-
-# Datos equalizados
-FILE_EQ = (
-    BASE_DIR
-    / "output_test_mio"
-    / "l1b_toa_VNIR-0.nc"
-)
-
-# Datos NO equalizados
-FILE_NO_EQ = (
-    BASE_DIR
-    / "output_dia2_noecualiz"
-    / "l1b_toa_VNIR-0.nc"
-)
-
-# Ground truth
-FILE_TRUTH = (
-    BASE_DIR
-    / "input"
-    / "ism_toa_isrf_VNIR-0.nc"
-)
-
-
-# ================================================================
-# CONFIGURACIÓN
-# ================================================================
-
+EQ_DIR = BASE_DIR / "output_test_mio"
+NO_EQ_DIR = BASE_DIR / "output_dia2_noecualiz"
+TRUTH_DIR = BASE_DIR / "input"
 VARIABLE = "toa"
-
-# La variable tiene shape (100, 150).
-# El segundo eje corresponde a los 150 ACT pixels.
-#
-# Se selecciona una línea de la primera dimensión.
-# Puedes cambiar este valor entre 0 y 99.
 ALT_INDEX = 50
+BANDS = tuple(f"VNIR-{index}" for index in range(4))
 
 
-# ================================================================
-# FUNCIÓN PARA LEER TOA
-# ================================================================
+def confirm_run_labels(directory: Path, expected_equalization: bool) -> None:
+    """Check the latest logged run before assigning equalization labels."""
+    log_file = directory / "L1B.log"
+    text = log_file.read_text(encoding="utf-8")
+    marker = "Start of the L1B Processing Module"
+    if marker not in text:
+        raise ValueError(f"Cannot confirm run labels: no L1B run found in {log_file}")
+    latest = text.rsplit(marker, 1)[1]
+    if "End of the L1B Module!" not in latest:
+        raise ValueError(f"Cannot confirm run labels: latest run is incomplete in {log_file}")
+    for band in BANDS:
+        start, end = f"Start of BAND {band}", f"End of BAND {band}"
+        if start not in latest or end not in latest:
+            raise ValueError(f"Cannot confirm run labels for {band} in {log_file}")
+        section = latest.split(start, 1)[1].split(end, 1)[0]
+        equalized = "EODP-ALG-L1B-1010: Radiometric Correction (equalization)" in section
+        restored = "EODP-ALG-L1B-1020: Absolute radiometric gain application" in section
+        if equalized != expected_equalization or not restored:
+            raise ValueError(f"Run evidence contradicts the requested label for {band} in {log_file}")
+    label = "with equalization" if expected_equalization else "without equalization"
+    print(f"Confirmed {label} for all four bands from {log_file}")
+
 
 def read_toa_profile(file_path, variable="toa", alt_index=50):
-    """
-    Lee la variable TOA de un NetCDF y extrae un perfil
-    a lo largo de los ACT pixels.
-
-    Para un array (100, 150):
-        - primera dimensión: línea seleccionada
-        - segunda dimensión: ACT pixels
-
-    Devuelve un vector de 150 muestras.
-    """
-
-    if not file_path.exists():
-        raise FileNotFoundError(
-            f"No se encuentra el archivo:\n{file_path}"
-        )
-
-    with xr.open_dataset(file_path) as ds:
-
-        if variable not in ds.variables:
+    """Read the selected ALT row as a float64 ACT profile."""
+    if not file_path.is_file():
+        raise FileNotFoundError(f"File not found: {file_path}")
+    with xr.open_dataset(file_path) as dataset:
+        if variable not in dataset.variables:
             raise ValueError(
-                f"La variable '{variable}' no existe en:\n"
-                f"{file_path}\n\n"
-                f"Variables disponibles: {list(ds.variables)}"
+                f"Variable '{variable}' not found in {file_path}. "
+                f"Available variables: {list(dataset.variables)}"
             )
+        data = dataset[variable]
+        print(f"File: {file_path}")
+        print(f"Variable: {variable}; dimensions: {data.dims}; shape: {data.shape}")
+        if data.ndim != 2:
+            raise ValueError(f"Expected a 2D TOA variable in {file_path}, found {data.ndim} dimensions")
+        if not 0 <= alt_index < data.shape[0]:
+            raise IndexError(f"ALT_INDEX={alt_index} is outside the first dimension of size {data.shape[0]}")
+        profile = np.asarray(data.isel({data.dims[0]: alt_index}).values, dtype=np.float64)
+        print(f"Selected profile: ALT row {alt_index}; ACT pixels: {profile.size}")
+        return profile
 
-        data = np.asarray(
-            ds[variable].values,
-            dtype=np.float64
-        )
 
+def compute_metrics(signal, truth):
+    """Return RMSE, MAE and the number of finite paired samples."""
+    valid = np.isfinite(signal) & np.isfinite(truth)
+    if not np.any(valid):
+        raise ValueError("No finite paired samples are available for error metrics")
+    error = signal[valid] - truth[valid]
+    return float(np.sqrt(np.mean(error ** 2))), float(np.mean(np.abs(error))), int(valid.sum())
+
+
+def main() -> None:
+    # The processing code logs L1B-1010 only inside the do_equalization branch,
+    # before restitution (L1B-1020) and writing the final l1b_toa product.
+    # Check both logs before reading data or generating any figures.
+    try:
+        confirm_run_labels(EQ_DIR, expected_equalization=True)
+        confirm_run_labels(NO_EQ_DIR, expected_equalization=False)
+    except (OSError, ValueError) as error:
+        raise RuntimeError(f"Cannot confirm equalization labels; no figures generated. {error}") from error
+
+    metrics = []
+    for band in BANDS:
         print()
-        print(f"Archivo: {file_path.name}")
-        print(f"Variable: {variable}")
-        print(f"Dimensiones: {ds[variable].dims}")
-        print(f"Shape: {data.shape}")
+        print("=" * 70)
+        print(f"BAND {band}: ALT={ALT_INDEX}")
+        toa_eq = read_toa_profile(EQ_DIR / f"l1b_toa_{band}.nc", VARIABLE, ALT_INDEX)
+        toa_no_eq = read_toa_profile(NO_EQ_DIR / f"l1b_toa_{band}.nc", VARIABLE, ALT_INDEX)
+        toa_truth = read_toa_profile(TRUTH_DIR / f"ism_toa_isrf_{band}.nc", VARIABLE, ALT_INDEX)
+        if not (toa_eq.shape == toa_no_eq.shape == toa_truth.shape):
+            raise ValueError(f"The three profiles do not have the same number of samples for {band}")
+        rmse_eq, mae_eq, count_eq = compute_metrics(toa_eq, toa_truth)
+        rmse_no_eq, mae_no_eq, count_no_eq = compute_metrics(toa_no_eq, toa_truth)
+        metrics.append((band, rmse_eq, mae_eq, rmse_no_eq, mae_no_eq))
+        print("ERRORS RELATIVE TO GROUND TRUTH [mW/m2/sr]")
+        print(f"With equalization: RMSE={rmse_eq:.6f}; MAE={mae_eq:.6f}; valid samples={count_eq}")
+        print(f"Without equalization: RMSE={rmse_no_eq:.6f}; MAE={mae_no_eq:.6f}; valid samples={count_no_eq}")
 
-        # --------------------------------------------------------
-        # Caso 1: ya es un vector
-        # --------------------------------------------------------
+        act_pixel = np.arange(len(toa_truth))
+        fig, ax = plt.subplots(figsize=(13, 6.5))
+        ax.plot(act_pixel, toa_eq, color="black", linewidth=1.5, label="TOA L1B with eq")
+        ax.plot(act_pixel, toa_no_eq, color="red", linewidth=1.5, label="TOA L1B no eq")
+        ax.plot(act_pixel, toa_truth, color="blue", linewidth=2, label="TOA after the ISRF")
+        ax.set_title(f"Effect of the Equalization for {band}", fontsize=15)
+        ax.set_xlabel("ACT pixel [-]", fontsize=12)
+        ax.set_ylabel("TOA [mW/m²/sr]", fontsize=12)
+        ax.grid(True, alpha=0.4)
+        ax.legend(loc="upper left")
+        fig.tight_layout()
+        output_figure = BASE_DIR / f"Figure_8_3_Equalization_{band}.png"
+        fig.savefig(output_figure, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+        print(f"Figure saved at 300 dpi: {output_figure}")
 
-        if data.ndim == 1:
-            return data
-
-        # --------------------------------------------------------
-        # Caso 2: matriz 2D
-        # --------------------------------------------------------
-
-        if data.ndim == 2:
-
-            if alt_index >= data.shape[0]:
-                raise IndexError(
-                    f"ALT_INDEX={alt_index} está fuera de rango.\n"
-                    f"La primera dimensión tiene tamaño "
-                    f"{data.shape[0]}."
-                )
-
-            profile = data[alt_index, :]
-
-            print(
-                f"Perfil seleccionado: fila {alt_index}"
-            )
-            print(
-                f"Número de ACT pixels: {profile.size}"
-            )
-
-            return profile
-
-        raise ValueError(
-            f"No se esperaba una variable TOA con "
-            f"{data.ndim} dimensiones."
-        )
+    print()
+    print("FINAL METRICS RELATIVE TO GROUND TRUTH [mW/m2/sr]")
+    print(f"{'Band':<10} {'RMSE with eq':>15} {'MAE with eq':>15} {'RMSE no eq':>15} {'MAE no eq':>15}")
+    for band, rmse_eq, mae_eq, rmse_no_eq, mae_no_eq in metrics:
+        print(f"{band:<10} {rmse_eq:15.6f} {mae_eq:15.6f} {rmse_no_eq:15.6f} {mae_no_eq:15.6f}")
 
 
-# ================================================================
-# LEER LOS TRES PRODUCTOS
-# ================================================================
-
-toa_eq = read_toa_profile(
-    FILE_EQ,
-    VARIABLE,
-    ALT_INDEX
-)
-
-toa_no_eq = read_toa_profile(
-    FILE_NO_EQ,
-    VARIABLE,
-    ALT_INDEX
-)
-
-toa_truth = read_toa_profile(
-    FILE_TRUTH,
-    VARIABLE,
-    ALT_INDEX
-)
-
-
-# ================================================================
-# COMPROBAR TAMAÑOS
-# ================================================================
-
-print()
-print("=" * 60)
-print("COMPROBACIÓN DE TAMAÑOS")
-print("=" * 60)
-
-print(f"Equalizado     : {toa_eq.shape}")
-print(f"No equalizado  : {toa_no_eq.shape}")
-print(f"TRUTH           : {toa_truth.shape}")
-
-if not (
-    len(toa_eq)
-    == len(toa_no_eq)
-    == len(toa_truth)
-):
-    raise ValueError(
-        "Los tres perfiles no tienen el mismo número de muestras."
-    )
-
-
-# ================================================================
-# MÉTRICAS RESPECTO AL TRUTH
-# ================================================================
-
-valid_eq = (
-    np.isfinite(toa_eq)
-    & np.isfinite(toa_truth)
-)
-
-valid_no_eq = (
-    np.isfinite(toa_no_eq)
-    & np.isfinite(toa_truth)
-)
-
-
-error_eq = (
-    toa_eq[valid_eq]
-    - toa_truth[valid_eq]
-)
-
-error_no_eq = (
-    toa_no_eq[valid_no_eq]
-    - toa_truth[valid_no_eq]
-)
-
-
-rmse_eq = np.sqrt(
-    np.mean(error_eq ** 2)
-)
-
-rmse_no_eq = np.sqrt(
-    np.mean(error_no_eq ** 2)
-)
-
-mae_eq = np.mean(
-    np.abs(error_eq)
-)
-
-mae_no_eq = np.mean(
-    np.abs(error_no_eq)
-)
-
-
-print()
-print("=" * 60)
-print("ERRORES RESPECTO AL TRUTH")
-print("=" * 60)
-
-print(f"RMSE equalizado     : {rmse_eq:.6f}")
-print(f"RMSE no equalizado  : {rmse_no_eq:.6f}")
-
-print(f"MAE equalizado      : {mae_eq:.6f}")
-print(f"MAE no equalizado   : {mae_no_eq:.6f}")
-
-
-# ================================================================
-# EJE ACT
-# ================================================================
-
-act_pixel = np.arange(
-    len(toa_truth)
-)
-
-
-# ================================================================
-# FIGURA 8.3
-# ================================================================
-
-plt.figure(
-    figsize=(13, 6.5)
-)
-
-
-# Equalizado: negro
-plt.plot(
-    act_pixel,
-    toa_eq,
-    color="black",
-    linewidth=1.5,
-    label="TOA L1B with eq"
-)
-
-
-# No equalizado: rojo
-plt.plot(
-    act_pixel,
-    toa_no_eq,
-    color="red",
-    linewidth=1.5,
-    label="TOA L1B no eq"
-)
-
-
-# Truth: azul
-plt.plot(
-    act_pixel,
-    toa_truth,
-    color="blue",
-    linewidth=2,
-    label="TOA after the ISRF"
-)
-
-
-plt.title(
-    "Effect of the Equalization for VNIR-0",
-    fontsize=15
-)
-
-plt.xlabel(
-    "ACT pixel [-]",
-    fontsize=12
-)
-
-plt.ylabel(
-    "TOA [mW/m²/sr]",
-    fontsize=12
-)
-
-plt.grid(
-    True,
-    alpha=0.4
-)
-
-plt.legend(
-    loc="upper left"
-)
-
-plt.tight_layout()
-
-
-# ================================================================
-# GUARDAR FIGURA
-# ================================================================
-
-OUTPUT_FIGURE = (
-    BASE_DIR
-    / "Figure_8_3_Equalization_VNIR-0.png"
-)
-
-plt.savefig(
-    OUTPUT_FIGURE,
-    dpi=300,
-    bbox_inches="tight"
-)
-
-print()
-print(
-    f"Figura guardada en:\n{OUTPUT_FIGURE}"
-)
-
-
-plt.show()
+if __name__ == "__main__":
+    main()
